@@ -1,0 +1,231 @@
+---
+title: "Aim3"
+author: "Cameron Baker"
+date: "4/13/2021"
+output: pdf_document
+---
+
+```{r}
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(ggmap)
+library(grid)
+library(gridExtra)
+
+final_df <- read.csv("2019_Racial_Profiling_Combined.csv", stringsAsFactors = F)
+load(file="austin.map.obj")
+
+
+final_df$parsed_time <- as.numeric(gsub(":.*$","",final_df$Time))
+final_df$Time_of_day <- "Night"
+final_df$Time_of_day[which(final_df$parsed_time > 6 & final_df$parsed_time < 21)] <- "Day"
+
+p1 <- ggmap(austin.map) + geom_point(data = final_df, aes(x = Corrected_longitude, y = Corrected_latitude, color = type))
+p1
+# Bin out rising property rates by zip code
+# Create classifier around 
+
+Zip <- c(78701,78702,78703,78704,78705,78717,78721,78722,78723,78724,78725,78726,78727,78728,78729,78730:78739,78741,78744:78754,78756:78759,78602,78610,78613,78617,78619,78620,78621,78626,78628,78633,78634,78640,78641,78642,78644,78645,78652,78653,78654,78657,78660,78664,78665,78666,78659,78676,78681)
+
+increase <- c(9.54,
+12.52,
+6.50,
+7.33,
+5.59,
+3.88,
+11.43,
+7.38,
+10.12,
+7.04,
+5.24,
+4.78,
+4.88,
+4.05,
+4.47,
+1.15,
+5.63,
+5.18,
+6.43,
+3.55,
+5.22,
+8.94,
+3.41,
+4.23,
+5.39,
+8.40,
+5.94,
+6.71,
+6.48,
+1.25,
+5.11,
+5.40,
+3.82,
+6.19,
+7.27,
+4.99,
+2.55,
+6.18,
+6.43,
+3.87,
+4.24,
+4.48,
+5.04,
+5.52,
+5.17,
+6.83,
+4.48,
+3.91,
+4.68,
+4.46,
+3.47,
+3.38,
+4.02,
+5.62,
+6.64,
+4.53,
+4.28,
+3.74,
+2.79,
+9.18,
+9.86,
+3.80,
+2.94,
+8.80,
+3.61,
+2.78,
+4.64,
+3.93)
+
+zip_increase <- data.frame(Zip,increase)
+
+final_df <- final_df %>% left_join(zip_increase, by = "Zip") %>% filter(!is.na(increase))
+
+map_plot_df <- data.frame(matrix(ncol=4,nrow=0))
+for(zip in unique(final_df$Zip)){
+  slice <- final_df[which(final_df$Zip == zip),]
+  avg_long <- mean(slice$Corrected_longitude)
+  avg_lat <- mean(slice$Corrected_latitude)
+  map_plot_df <- rbind(map_plot_df,c(zip,avg_long,avg_lat,slice$increase[1]))
+}
+colnames(map_plot_df) <- c("Zip","Long","Lat","increase")
+# Plot probable cause
+
+p1 <- ggmap(austin.map) + geom_point(data = map_plot_df, aes(x = Long, y = Lat, color = increase))
+p1
+
+final_df$increase_label <- "Low"
+final_df$increase_label[which(final_df$increase >= 5 & final_df$increase <= 10)] <- "Medium"
+final_df$increase_label[which(final_df$increase >= 10)] <- "High"
+
+p1 <- ggmap(austin.map) + geom_point(data = final_df, aes(x = Corrected_longitude, y = Corrected_latitude, color = increase_label))
+p1
+```
+
+```{r}
+
+final_df <- final_df %>% filter(Race == "WHITE" | Race == "BLACK" | Race == "HISPANIC OR LATINO") %>% filter(Search_based_on != "")
+
+p1 <- ggmap(austin.map) + geom_point(data = final_df, aes(x = Corrected_longitude, y = Corrected_latitude, color = increase_label))
+p1
+
+# See if we can determine whether or not there is a geographic component to probable cause
+final_df$pretextual <- FALSE
+final_df[which(final_df$Search_based_on == "CONSENT" | final_df$Search_based_on == "FRISK FOR SAFETY" | final_df$Search_based_on == "PROBABLE CAUSE"), "pretextual"] <- TRUE
+
+# We are looking to see if we can predict pretextual searches
+# Race
+# Sex
+# increase
+# council district
+
+final_df$pretextual <- as.factor(final_df$pretextual)
+shuffle <- sample(nrow(final_df))
+split <- round(nrow(final_df)*.8)
+final_df_train <- final_df[shuffle[1:split],]
+final_df_test <- final_df[shuffle[(split+1):nrow(final_df)],]
+
+#final_df_train_pos <- final_df_train[which(final_df_train$pretextual == "TRUE"),]
+#final_df_train_pos_resample <- final_df_train_pos[sample(1:nrow(final_df_train_pos), 10000, replace = T),]
+#final_df_train <- rbind(final_df_train, final_df_train_pos_resample)
+#final_df_test <- final_df[shuffle[(split+1):nrow(final_df)],]
+#save(final_df_train, file = "final_df_train.obj")
+#save(final_df_test, file = "final_df_test.obj")
+#load(file = "final_df_train.obj")
+#load(file = "final_df_test.obj")
+
+library(gbm)
+library(pROC)
+final_df_train$pretextual <- as.character(final_df_train$pretextual)
+final_df_train$pretextual[which(final_df_train$pretextual == "FALSE")] <- 0
+final_df_train$pretextual[which(final_df_train$pretextual == "TRUE")] <- 1
+final_df_train$pretextual <- as.numeric(final_df_train$pretextual)
+final_df_test$pretextual <- as.character(final_df_test$pretextual)
+final_df_test$pretextual[which(final_df_test$pretextual == "FALSE")] <- 0
+final_df_test$pretextual[which(final_df_test$pretextual == "TRUE")] <- 1
+final_df_test$pretextual <- as.numeric(final_df_test$pretextual)
+final_df_test$Race <- as.factor(final_df_test$Race)
+final_df_test$Sex <- as.factor(final_df_test$Sex)
+final_df_test$District <- as.factor(final_df_test$District)
+final_df_train$Race <- as.factor(final_df_train$Race)
+final_df_train$Sex <- as.factor(final_df_train$Sex)
+final_df_train$District <- as.factor(final_df_train$District)
+final_df_train$APD_Sector <- as.factor(final_df_train$APD_Sector)
+final_df_test$APD_Sector <- as.factor(final_df_test$APD_Sector)
+final_df_test$increase_label <- as.factor(final_df_test$increase_label)
+final_df_train$increase_label <- as.factor(final_df_train$increase_label)
+final_df_test$Time_of_day <- as.factor(final_df_test$Time_of_day)
+final_df_train$Time_of_day <- as.factor(final_df_train$Time_of_day)
+final_df_test$Zip <- as.factor(final_df_test$Zip)
+final_df_train$Zip <- as.factor(final_df_train$Zip)
+
+#final_df.boost <- gbm(pretextual ~ Race + Sex + increase_label + APD_Sector + Zip + Time_of_day, data = final_df_train, distribution = "bernoulli", n.trees=10000, interaction.depth=4, shrinkage = 0.01, verbose = F, cv.folds = 3)
+#save(final_df.boost, file = "final_df.boost.obj")
+load(file = "final_df.boost.obj")
+boost.sum <- summary(final_df.boost)
+plot(boost.sum, xlab = "Variable", ylab = "Relative Influence")
+
+final_df_test$pretextual <- as.factor(final_df_test$pretextual)
+gbm.pred <- predict(final_df.boost, final_df_test, verbose = F, type = "response")
+
+gbm.pred[gbm.pred >= 0.5] <- 1
+gbm.pred[gbm.pred < 0.5] <- 0
+gbm.pred <- as.factor(gbm.pred)
+library(caret)
+confusionMatrix(gbm.pred, final_df_test$pretextual)
+gbm.confusion.matrix <- as.data.frame.matrix(table(final_df_test$pretextual, gbm.pred))
+confusionMatrix(gbm.pred, final_df_test$pretextual)
+
+```
+
+```{r eval=FALSE}
+final_df$streetname <- gsub("^([0-9]+)","",final_df$Location)
+final_df$streetname <- sub("^ ","",final_df$streetname)
+final_df$streetname <- sub("^/ ","",final_df$streetname)
+final_df_street_zip_map <- data.frame(final_df$streetname, final_df$Zip)
+colnames(final_df_street_zip_map) <- c("Street","Zip")
+final_df_street_zip_map <- final_df_street_zip_map %>% distinct()
+final_df_street_zip_map <- final_df_street_zip_map[!is.na(final_df_street_zip_map$Zip),]
+final_df_street_zip_map <- final_df_street_zip_map[order(final_df_street_zip_map$Street),]
+final_df_street_zip_map$Street <- sub(" / ","",final_df_street_zip_map$Street)
+final_df_street_zip_map <- final_df_street_zip_map[!duplicated(final_df_street_zip_map$Street),]
+
+homeless_actions <- read.csv("Strategic_Measure_Number_and_Percentage_of_instances_where_people_access_court_services_other_than_in_person_and_outside_normal_business_hours__e.g._phone__mobile_application__online__expanded_hours____Downtown_Aus.csv", stringsAsFactors = F)
+homeless_actions_2019 <- homeless_actions[which(grepl("2019", homeless_actions$Offense.Date)),]
+homeless_actions_2019$streetname <- gsub("^([0-9]+)","",homeless_actions_2019$Offense.Street.Name)
+
+homeless_actions_2019$streetname <- sub("^ ","",homeless_actions_2019$streetname)
+homeless_actions_2019$streetname <- sub("^/ ","",homeless_actions_2019$streetname)
+homeless_actions_2019$streetname <- sub("STREET","ST",homeless_actions_2019$streetname)
+homeless_actions_2019$streetname <- sub("BOULEVARD","BLVD",homeless_actions_2019$streetname)
+homeless_actions_2019$streetname <- sub("AVENUE","AVE",homeless_actions_2019$streetname)
+homeless_actions_2019$streetname <- sub("ROAD","RD",homeless_actions_2019$streetname)
+homeless_actions_2019$streetname <- sub("DRIVE","DR",homeless_actions_2019$streetname)
+homeless_actions_2019$streetname <- sub("TERRACE","TER",homeless_actions_2019$streetname)
+for(i in unique(homeless_actions_2019$streetname)){
+  if(i %in% final_df_street_zip_map$Street){
+    print(i)
+  }
+}
+```
+

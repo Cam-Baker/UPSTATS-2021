@@ -1,0 +1,193 @@
+---
+title: "Aim1_traffic_violations"
+author: "Cameron Baker"
+date: "4/11/2021"
+output: pdf_document
+---
+
+```{r}
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+final_df <- read.csv("2019_Racial_Profiling_Combined.csv", stringsAsFactors = F)
+moving_traffic_violations <-  filter(final_df, Reason_for_stop == "Moving Traffic Violation") %>% filter(Race %in% c("WHITE","BLACK","HISPANIC OR LATINO"))
+moving_traffic_violations <- moving_traffic_violations[which(moving_traffic_violations$PRIMARY_KEY %in% unique(moving_traffic_violations$PRIMARY_KEY)),]
+```
+
+```{r}
+
+pop_stats_2010 <- read.csv("2010 census data.csv")
+pop_stats_2010[1,]
+
+Black.pop <- (sum(pop_stats_2010$Black.pop) / sum(pop_stats_2010$Total.pop))
+Hispanic.pop <- (sum(pop_stats_2010$Hispanic.pop) / sum(pop_stats_2010$Total.pop))
+White.pop <- (sum(pop_stats_2010$White.pop) / sum(pop_stats_2010$Total.pop))
+
+
+table(moving_traffic_violations$type)
+table(moving_traffic_violations$type, moving_traffic_violations$Race)
+
+traffic_stop_sex_tbl <- as.data.frame.matrix(table(moving_traffic_violations$type, moving_traffic_violations$Sex))
+traffic_stop_sex_tbl <- traffic_stop_sex_tbl[,c(2,3)]
+
+#traffic_stop_sex_tbl[,1] <- round(traffic_stop_sex_tbl[,1] / sum(traffic_stop_sex_tbl[,1]),3) 
+#traffic_stop_sex_tbl[,2] <- round(traffic_stop_sex_tbl[,2] / sum(traffic_stop_sex_tbl[,2]),3)
+
+knitr::kable(t(traffic_stop_sex_tbl))
+
+traffic_stop_sex_tbl <- as.data.frame.matrix(table(moving_traffic_violations$type, moving_traffic_violations$Sex))
+traffic_stop_sex_tbl <- traffic_stop_sex_tbl[,c(2,3)]
+
+#traffic_stop_sex_tbl[1,] <- traffic_stop_sex_tbl[1,] / sum(traffic_stop_sex_tbl[1,]),3)
+#traffic_stop_sex_tbl[2,] <- traffic_stop_sex_tbl[2,] / sum(traffic_stop_sex_tbl[2,]),3)
+#traffic_stop_sex_tbl[3,] <- traffic_stop_sex_tbl[3,] / sum(traffic_stop_sex_tbl[3,]),3)
+
+knitr::kable(t(traffic_stop_sex_tbl))
+
+traffic_stop_race_tbl <- t(as.data.frame.matrix(table(moving_traffic_violations$type, moving_traffic_violations$Race)))
+
+round(rowSums(traffic_stop_race_tbl) / sum(traffic_stop_race_tbl),4)
+
+knitr::kable(traffic_stop_race_tbl)
+traffic_stop_race_tbl[1,] <- round(traffic_stop_race_tbl[1,] / sum(traffic_stop_race_tbl[1,]),3) 
+traffic_stop_race_tbl[2,] <- round(traffic_stop_race_tbl[2,] / sum(traffic_stop_race_tbl[2,]),3) 
+traffic_stop_race_tbl[3,] <- round(traffic_stop_race_tbl[3,] / sum(traffic_stop_race_tbl[3,]),3) 
+
+knitr::kable(traffic_stop_race_tbl)
+
+moving_traffic_violations$Race_Sex <- paste0(moving_traffic_violations$Race," ",moving_traffic_violations$Sex)
+traffic_stop_race_tbl <- as.data.frame.matrix(table(moving_traffic_violations$type, moving_traffic_violations$Race_Sex))
+traffic_stop_race_tbl <- traffic_stop_race_tbl[,c(2,3,5,6,9,10)]
+#traffic_stop_race_tbl[,1] <- round(traffic_stop_race_tbl[,1] / sum(traffic_stop_race_tbl[,1]),3) 
+#traffic_stop_race_tbl[,2] <- round(traffic_stop_race_tbl[,2] / sum(traffic_stop_race_tbl[,2]),3) 
+#traffic_stop_race_tbl[,3] <- round(traffic_stop_race_tbl[,3] / sum(traffic_stop_race_tbl[,3]),3)
+#traffic_stop_race_tbl[,4] <- round(traffic_stop_race_tbl[,4] / sum(traffic_stop_race_tbl[,4]),3) 
+#traffic_stop_race_tbl[,5] <- round(traffic_stop_race_tbl[,5] / sum(traffic_stop_race_tbl[,5]),3) 
+#traffic_stop_race_tbl[,6] <- round(traffic_stop_race_tbl[,6] / sum(traffic_stop_race_tbl[,6]),3)
+traffic_stop_race_tbl <- t(traffic_stop_race_tbl)
+
+knitr::kable(traffic_stop_race_tbl)
+```
+
+```{r fig.width=6, fig.height=6}
+library(graphics)
+mosaicplot(t(traffic_stop_race_tbl), shade = TRUE, las=1, main = "")
+
+out_chisq <- chisq.test(t(traffic_stop_race_tbl))
+out_chisq
+```
+```{r fig.width=6}
+library(corrplot)
+corrplot(t(out_chisq$residuals), is.cor = FALSE)
+#library(gplots)
+#traffic_stop_race_tbl <- as.matrix(table(moving_traffic_violations$type, moving_traffic_violations$Race_Sex))
+#traffic_stop_race_tbl <- as.table(traffic_stop_race_tbl[,c(2,3,5,6,9,10)])
+#balloonplot(traffic_stop_race_tbl, label=F)
+#library(reshape2)
+#melted_tbl <- melt(traffic_stop_race_tbl)
+#melted_tbl$outcome <- rep(c("Arrest","Citation","Warning"),3)
+#ggplot(melted_tbl, aes(x = variable, y = value, color = outcome)) + geom_bar()
+```
+
+```{r}
+moving_traffic_violations$parsed_time <- as.numeric(gsub(":.*$","",moving_traffic_violations$Time))
+moving_traffic_violations$Time_of_day <- "Night"
+moving_traffic_violations$Time_of_day[which(moving_traffic_violations$parsed_time > 6 & moving_traffic_violations$parsed_time < 21)] <- "Day"
+knitr::kable(table(moving_traffic_violations$Time_of_day, moving_traffic_violations$type))
+
+moving_traffic_violations$RACE_TOD <- paste0(moving_traffic_violations$Race," (",moving_traffic_violations$Time_of_day,")")
+
+race_tod_tbl <- table(moving_traffic_violations$RACE_TOD, moving_traffic_violations$type)
+
+knitr::kable(race_tod_tbl)
+
+race_known_tbl <- table(moving_traffic_violations$RACE_TOD, moving_traffic_violations$Race_known)
+
+tmp <- as.data.frame.matrix(race_known_tbl)
+sum(tmp[,2]) / (sum(tmp[,1]) + sum(tmp[,2]))
+
+sum(c(tmp[1,2],tmp[3,2],tmp[5,2])) / (sum(tmp[1,]) + sum(tmp[3,]) + sum(tmp[5,]))
+
+night_true <- sum(c(tmp[2,2],tmp[4,2],tmp[6,2]))
+night_total <- sum(tmp[2,]) + sum(tmp[4,]) + sum(tmp[6,])
+
+prop.test(c(night_true,sum(tmp[,2])), c(night_total,sum(colSums(tmp))))
+
+knitr::kable(race_known_tbl)
+
+race.chisq <- chisq.test(table(moving_traffic_violations$Race, moving_traffic_violations$type))
+corrplot(race.chisq$residuals, is.cor = FALSE)
+
+race_tod_tbl.chisq <- chisq.test(race_tod_tbl)
+corrplot(race_tod_tbl.chisq$residuals, is.cor = FALSE)
+
+```
+
+```{r}
+
+knitr::kable(table(moving_traffic_violations$Race_known,moving_traffic_violations$type))
+
+knitr::kable(table(moving_traffic_violations$Race_known,moving_traffic_violations$Searched))
+
+knitr::kable(table(moving_traffic_violations$Race,moving_traffic_violations$Searched))
+
+race_searched_chisq <- chisq.test(table(moving_traffic_violations$Race,moving_traffic_violations$Searched))
+
+corrplot(race_searched_chisq$residuals, is.cor = FALSE)
+
+moving_traffic_violations$RACE_searched <- paste0(moving_traffic_violations$Race," (",moving_traffic_violations$Searched,")")
+
+race_searched_type_tbl <- as.data.frame.matrix(table(moving_traffic_violations$RACE_searched,moving_traffic_violations$type))
+
+race_searched_type_tbl <- race_searched_type_tbl[c(1,3,4,6,7,9),]
+
+corrplot(chisq.test(race_searched_type_tbl)$residuals, is.cor = FALSE)
+
+knitr::kable(table(moving_traffic_violations$RACE_searched,moving_traffic_violations$type))
+
+knitr::kable(t(table(moving_traffic_violations$type,moving_traffic_violations$Search_based_on)))
+knitr::kable(t(table(moving_traffic_violations$Race,moving_traffic_violations$Search_based_on)))
+
+out <- chisq.test(t(as.data.frame.matrix(table(moving_traffic_violations$Race,moving_traffic_violations$Search_based_on))[,-1]))
+
+corrplot(out$residuals, is.cor = FALSE)
+
+moving_traffic_violations_searched <- moving_traffic_violations %>% filter(Searched == "TRUE")
+
+search_found <- as.data.frame.matrix(table(moving_traffic_violations_searched$Search_found,moving_traffic_violations_searched$Race))
+
+knitr::kable(search_found)
+
+search_found_chi <- chisq.test(search_found)
+
+corrplot(search_found_chi$residuals, is.cor = FALSE)
+
+moving_traffic_violations_frisked <- moving_traffic_violations[which(moving_traffic_violations$Search_based_on == "FRISK FOR SAFETY"),]
+
+knitr::kable(table(moving_traffic_violations_frisked$Race, moving_traffic_violations_frisked$type))
+
+moving_traffic_violations_frisked.chisq <- chisq.test(table(moving_traffic_violations_frisked$Race, moving_traffic_violations_frisked$type))
+
+moving_traffic_violations_frisked.chisq
+
+corrplot(moving_traffic_violations_frisked.chisq$residuals, is.cor = FALSE)
+
+# Create seperate searched dataset
+
+frisk_found_tbl <- as.data.frame.matrix(table(moving_traffic_violations_frisked$Race,moving_traffic_violations_frisked$Search_found))[,-1]
+
+knitr::kable(frisk_found_tbl)
+chisq.test(frisk_found_tbl)
+
+black_found_prop <- c(frisk_found_tbl[1,3], sum(frisk_found_tbl[1,]))
+hispanic_found_prop <- c(frisk_found_tbl[2,3], sum(frisk_found_tbl[2,]))
+white_found_prop <- c(frisk_found_tbl[3,3], sum(frisk_found_tbl[3,]))
+total_prop <- c(sum(frisk_found_tbl[,3]), sum(rowSums(frisk_found_tbl)))
+
+prop.test(c(black_found_prop[1],total_prop[1]),c(black_found_prop[2],total_prop[2]))
+prop.test(c(hispanic_found_prop[1],total_prop[1]),c(hispanic_found_prop[2],total_prop[2]))
+prop.test(c(white_found_prop[1],total_prop[1]),c(white_found_prop[2],total_prop[2]))
+
+# Proportion tests for searchs
+
+```

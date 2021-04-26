@@ -1,0 +1,158 @@
+---
+title: "Preprocessing"
+author: "Cameron Baker"
+date: "3/29/2021"
+output: html_document
+---
+
+```{r warning=FALSE}
+library(tidyr)
+library(dplyr)
+library(stringr)
+
+arrests <- read.csv("2019_Racial_Profiling__RP__Arrests.csv", stringsAsFactors = F)
+citations <- read.csv("2019_Racial_Profiling__RP__Citations.csv", stringsAsFactors = F)
+warnings <- read.csv("2019_Racial_Profiling__RP__Warning_and_Field_Observations.csv", stringsAsFactors = F)
+
+arrests$type <- "arrest"
+citations$type <- "citation"
+warnings$type <- "warning"
+colnames(citations)[1] <- "PRIMARY_KEY"
+colnames(warnings)[2] <- "PRIMARY_KEY"
+
+# Build combined df
+final_df <- data.frame(matrix(nrow=0,ncol=2))
+final_df <- arrests[,c("PRIMARY_KEY","type")]
+final_df <- rbind(final_df, citations[,c("PRIMARY_KEY","type")])
+final_df <- rbind(final_df, warnings[,c("PRIMARY_KEY","type")])
+
+# Date
+final_df$Date <- c(arrests$REP_DATE, citations$OffenseDate, as.character(warnings$OCC_DATE)) %>% str_replace(" .*$","")
+
+# Time
+arrests$REP_TIME <- as.character(arrests$REP_TIME)
+### Pad out 0's in the beginning
+for(time in 1:length(arrests$REP_TIME)){
+  while(nchar(arrests$REP_TIME[time]) < 4){
+    arrests$REP_TIME[time] <- paste0(rep("0",nchar(arrests$REP_TIME[time])),arrests$REP_TIME[time])
+  }
+}
+arrests$REP_TIME <- sub("(\\d+)(\\d{2})", "\\1:\\2", arrests$REP_TIME)
+warnings$OCC_TIME <- as.character(warnings$OCC_TIME)
+for(time in 1:length(warnings$OCC_TIME)){
+  if(! is.na(warnings$OCC_TIME[time])){
+    while(nchar(warnings$OCC_TIME[time]) < 4){
+      warnings$OCC_TIME[time] <- paste0(rep("0",nchar(warnings$OCC_TIME[time])),warnings$OCC_TIME[time])
+    }
+  }
+}
+warnings$OCC_TIME <- sub("(\\d+)(\\d{2})", "\\1:\\2", warnings$OCC_TIME)
+final_df$Time <- c(arrests$REP_TIME, citations$OffenseTime, as.character(warnings$OCC_TIME))
+
+# APD Sector (Not recorded for citations)
+final_df$APD_Sector <- c(arrests$APD_sector, rep(NA,nrow(citations)), warnings$APD_sector)
+
+# Address
+final_df$Location <- c(arrests$LOCATION, citations$Location, warnings$LOCATION)
+
+# Coordinates (Not recorded for citations)
+final_df$X_Coord <- c(arrests$X_COORDINATE, rep(NA,nrow(citations)), warnings$X_COORDINATE)
+final_df$Y_Coord <- c(arrests$Y_COORDINATE, rep(NA,nrow(citations)), warnings$Y_COORDINATE)
+
+# Council district
+final_df$District <- c(arrests$CouncilDistrict, rep(NA,nrow(citations)), warnings$councilDistrict)
+
+# Country and Zip code
+final_df$County <- c(arrests$county_description, rep(NA,nrow(citations)), warnings$councilDistrict)
+final_df$Zip <- c(arrests$ZIP, rep(NA,nrow(citations)), warnings$ZIP)
+final_df$Census_tract <- c(arrests$CENSUS_TRACT, rep(NA,nrow(citations)), rep(NA,nrow(warnings)))
+
+# Race known
+NA_keys <- rownames(arrests[which(arrests$RACE_KNOWN == ""),])
+arrests$RACE_KNOWN[which(!grepl("NO",arrests$RACE_KNOWN))] <- TRUE
+arrests$RACE_KNOWN[which(grepl("NO",arrests$RACE_KNOWN))] <- FALSE
+arrests$RACE_KNOWN[as.numeric(NA_keys)] <- NA
+citations$Race_Known[which(grepl("true",citations$Race_Known))] <- TRUE
+citations$Race_Known[which(grepl("false",citations$Race_Known))] <- FALSE
+warnings$RACE_KNOWN[which(!grepl("NO",warnings$RACE_KNOWN))] <- TRUE
+warnings$RACE_KNOWN[which(grepl("NO",warnings$RACE_KNOWN))] <- FALSE
+final_df$Race_known <- c(arrests$RACE_KNOWN, citations$Race_Known, warnings$RACE_KNOWN)
+
+# Race
+citations$Race[which(citations$Race == "W")] <- "WHITE"
+citations$Race[which(citations$Race == "U")] <- "UNKNOWN"
+citations$Race[which(citations$Race == "B")] <- "BLACK"
+citations$Race[which(citations$Race == "A")] <- "ASIAN"
+citations$Race[which(citations$Race == "H")] <- "HISPANIC OR LATINO"
+citations$Race[which(citations$Race == "ME")] <- "MIDDLE EASTERN"
+citations$Race[which(citations$Race == "O")] <- "HAWAIIAN/PACIFIC ISLANDER" 
+citations$Race[which(citations$Race == "N")] <- "AMERICAN INDIAN/ALASKAN NATIVE"
+warnings$apd.race[which(warnings$apd.race == "W")] <- "WHITE"
+warnings$apd.race[which(warnings$apd.race == "U")] <- "UNKNOWN"
+warnings$apd.race[which(warnings$apd.race == "B")] <- "BLACK"
+warnings$apd.race[which(warnings$apd.race == "A")] <- "ASIAN"
+warnings$apd.race[which(warnings$apd.race == "H")] <- "HISPANIC OR LATINO"
+warnings$apd.race[which(warnings$apd.race == "M")] <- "MIDDLE EASTERN"
+warnings$apd.race[which(warnings$apd.race == "P")] <- "HAWAIIAN/PACIFIC ISLANDER" 
+arrests$APD_RACE_DESC[which(arrests$APD_RACE_DESC == "")] <- "UNKNOWN"
+final_df$Race <- c(arrests$APD_RACE_DESC, citations$Race, warnings$apd.race)
+
+# Reason for stop
+warnings$`Reason.for.Stop.â...TCOLE.form..MV.stops.only.`[which(warnings$`Reason.for.Stop.â...TCOLE.form..MV.stops.only.` == "Pre-existing knowledge (e.g. warrant)")] <- "Pre-existing knowledge (i.e. warrant)"
+final_df$Reason_for_stop <- c(arrests$`Reason.for.Stop.â...TCOLE.form`, citations$`Reason.for.Stop.â...TCOLE.form`, warnings$`Reason.for.Stop.â...TCOLE.form..MV.stops.only.`)
+
+# Sex
+final_df$Sex <- c(arrests$SEX, citations$Sex, warnings$SEX)
+
+# Search
+NA_keys <- rownames(arrests[which(arrests$Person.Search.YN == ""),])
+arrests$Person.Search.YN[which(!grepl("NO",arrests$Person.Search.YN))] <- TRUE
+arrests$Person.Search.YN[which(grepl("NO",arrests$Person.Search.YN))] <- FALSE
+arrests$Person.Search.YN[as.numeric(NA_keys)] <- NA
+warnings$Person.Search.YN[which(!grepl("NO",warnings$Person.Search.YN))] <- TRUE
+warnings$Person.Search.YN[which(grepl("NO",warnings$Person.Search.YN))] <- FALSE
+citations$Search.YN[which(grepl("true",citations$Search.YN))] <- TRUE
+citations$Search.YN[which(grepl("false",citations$Search.YN))] <- FALSE
+final_df$Searched <- c(arrests$Person.Search.YN, citations$Search.YN, warnings$Person.Search.YN)
+
+# Search based on
+final_df$Search_based_on <- c(arrests$Search.Based.On, citations$Search.Based.On, warnings$Search.Based.On)
+
+# Search found
+final_df$Search_found <- c(arrests$Search.Found, citations$Search.Found, warnings$Search.Found)
+
+#write.csv(final_df, "2019_Racial_Profiling_Combined.csv", row.names = F)
+```
+
+```{r}
+
+library(ggmap)
+library(grid)
+library(gridExtra)
+library(rgdal)
+
+final_df_coords <- final_df[,c("PRIMARY_KEY","X_Coord","Y_Coord")]
+final_df_coords <- na.omit(final_df_coords)
+final_df_coords <- final_df_coords[which(final_df_coords$X_Coord < 3200000),]
+final_df_coords_sub <- final_df_coords[,c(2,3)]
+final_df_coords_sub <- final_df_coords_sub*.3048
+names(final_df_coords_sub) <- c('x','y')
+coordinates(final_df_coords_sub) <- c('x','y')
+proj4string(final_df_coords_sub)=CRS('ESRI:102339')
+final_coords <- as.data.frame(spTransform(final_df_coords_sub,CRS("+init=epsg:4326")))
+final_df_coords[,c("Corrected_longitude")] <- final_coords$x
+final_df_coords[,c("Corrected_latitude")] <- final_coords$y
+#write.csv(final_df, "2019_Racial_Profiling_Combined.csv", row.names = F)
+#merged_df <- merge(final_df, final_df_coords, by = "PRIMARY_KEY", all.x=TRUE)
+merged_df <- final_df %>% left_join(final_df_coords, by = "PRIMARY_KEY")
+write.csv(merged_df, "2019_Racial_Profiling_Combined.csv", row.names = F)
+#corrected_coordinates <- read.csv("2018_RP_Arrests_Coordinates.csv", stringsAsFactors = F)
+
+#austin.map.full <- get_map(c(left = min(corrected_coordinates$Longitude)-0.001, bottom = 30.15, right = -97.65, top = 30.5))
+
+#save(austin.map.full, file="austin.map.full.obj")
+
+#austin.map.city <- get_map(c(left = -97.8, bottom = 30.2, right = -97.65, top = 30.4))
+
+#save(austin.map.city, file="austin.map.city.obj")
+```

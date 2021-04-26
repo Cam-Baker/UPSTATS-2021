@@ -1,0 +1,145 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r}
+
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(ggmap)
+library(grid)
+library(gridExtra)
+
+final_df <- read.csv("2019_Racial_Profiling_Combined.csv", stringsAsFactors = F)
+load(file="austin.map.city.obj")
+
+final_df$parsed_time <- as.numeric(gsub(":.*$","",final_df$Time))
+final_df$Time_of_day <- "Night"
+final_df$Time_of_day[which(final_df$parsed_time > 6 & final_df$parsed_time < 21)] <- "Day"
+
+ggmap(austin.map.city) + geom_point(data = final_df, aes(x = Corrected_longitude, y = Corrected_latitude, color = type), size = 0.5)
+
+
+Zip <- c(78701,78702,78703,78704,78705,78717,78721,78722,78723,78724,78725,78726,78727,78728,78729,78730:78739,78741,78744:78754,78756:78759,78602,78610,78613,78617,78619,78620,78621,78626,78628,78633,78634,78640,78641,78642,78644,78645,78652,78653,78654,78657,78660,78664,78665,78666,78659,78676,78681)
+
+increase <- c(9.54,
+12.52,
+6.50,
+7.33,
+5.59,
+3.88,
+11.43,
+7.38,
+10.12,
+7.04,
+5.24,
+4.78,
+4.88,
+4.05,
+4.47,
+1.15,
+5.63,
+5.18,
+6.43,
+3.55,
+5.22,
+8.94,
+3.41,
+4.23,
+5.39,
+8.40,
+5.94,
+6.71,
+6.48,
+1.25,
+5.11,
+5.40,
+3.82,
+6.19,
+7.27,
+4.99,
+2.55,
+6.18,
+6.43,
+3.87,
+4.24,
+4.48,
+5.04,
+5.52,
+5.17,
+6.83,
+4.48,
+3.91,
+4.68,
+4.46,
+3.47,
+3.38,
+4.02,
+5.62,
+6.64,
+4.53,
+4.28,
+3.74,
+2.79,
+9.18,
+9.86,
+3.80,
+2.94,
+8.80,
+3.61,
+2.78,
+4.64,
+3.93)
+
+zip_increase <- data.frame(Zip,increase)
+
+final_df <- final_df %>% left_join(zip_increase, by = "Zip") %>% filter(!is.na(increase))
+
+map_plot_df <- data.frame(matrix(ncol=4,nrow=0))
+for(zip in unique(final_df$Zip)){
+  slice <- final_df[which(final_df$Zip == zip),]
+  avg_long <- mean(slice$Corrected_longitude)
+  avg_lat <- mean(slice$Corrected_latitude)
+  map_plot_df <- rbind(map_plot_df,c(zip,avg_long,avg_lat,slice$increase[1]))
+}
+colnames(map_plot_df) <- c("Zip","Long","Lat","increase")
+# Plot probable cause
+
+p1 <- ggmap(austin.map.city) + geom_point(data = map_plot_df, aes(x = Long, y = Lat, color = increase))
+p1
+
+final_df$increase_label <- "Low"
+final_df$increase_label[which(final_df$increase >= 5 & final_df$increase <= 10)] <- "Medium"
+final_df$increase_label[which(final_df$increase >= 10)] <- "High"
+
+p1 <- ggmap(austin.map.city) + geom_point(data = final_df, aes(x = Corrected_longitude, y = Corrected_latitude, color = increase_label), size = 1)
+p1
+
+final_df$pretextual <- FALSE
+final_df[which(final_df$Search_based_on == "CONSENT" | final_df$Search_based_on == "FRISK FOR SAFETY" | final_df$Search_based_on == "PROBABLE CAUSE"), "pretextual"] <- TRUE
+
+p1 <- ggmap(austin.map.city) + geom_point(data = final_df, aes(x = Corrected_longitude, y = Corrected_latitude, color = pretextual), size = 1)
+p1
+
+tmp <- final_df[which(final_df$Search_based_on != ""),]
+
+p1 <- ggmap(austin.map.city) + geom_point(data = tmp, aes(x = Corrected_longitude, y = Corrected_latitude, color = Search_based_on))
+p1
+
+```
+
+```{r}
+
+response_to_resistance <- read.csv("2019_Racial_Profiling_Combined_converted_coords.csv", stringsAsFactors = F)
+
+p1 <- ggmap(austin.map.city) + geom_point(data = response_to_resistance, aes(x = Corrected_longitude, y = Corrected_latitude, color = Subject.Effects))
+p1
+
+response_to_resistance$R2R.Level <- as.character(response_to_resistance$R2R.Level)
+p1 <- ggmap(austin.map.city) + geom_point(data = response_to_resistance, aes(x = Corrected_longitude, y = Corrected_latitude, color = R2R.Level))
+p1
+```
+
+
